@@ -9,6 +9,7 @@ let keroroFallSprite; // 宣告 Keroro 摔倒動畫精靈圖變數
 let tamamaStopSprite; // 宣告 Tamama 待機動畫精靈圖變數
 let tamamaFallSprite; // 宣告 Tamama 摔倒動畫精靈圖變數
 let tamamaPushSprite; // 宣告 Tamama 推動動畫精靈圖變數
+let tamamaTalkSprite; // 宣告 Tamama 對話動畫精靈圖變數
 
 const stopFrameCount = 4; // 設定 Keroro 待機動畫總格數為 4 格
 const runFrameCount = 4; // 設定 Keroro 跑步動畫總格數為 4 格
@@ -19,6 +20,7 @@ const keroroFallFrameCount = 4; // 設定 Keroro 摔倒動畫總格數為 4 格
 const tamamaStopFrameCount = 4; // 設定 Tamama 待機動畫總格數為 4 格
 const tamamaFallFrameCount = 3; // 設定 Tamama 摔倒動畫總格數為 3 格
 const tamamaPushFrameCount = 11; // 設定 Tamama 推動動畫總格數為 11 格
+const tamamaTalkFrameCount = 6; // 設定 Tamama 對話動畫總格數為 6 格
 
 const designWidth = 1536; // 設定響應式縮放的基準寬度
 const designHeight = 1024; // 設定響應式縮放的基準高度
@@ -62,6 +64,10 @@ let tamamaX = 0; // 儲存 Tamama 中心點的水平座標
 let tamamaY = 0; // 儲存 Tamama 中心點的垂直座標
 let tamamaStopFrame = 0; // 儲存 Tamama 待機動畫目前播放的動畫格
 let tamamaStopLastFrameAt = 0; // 儲存 Tamama 待機動畫上次切格的毫秒時間
+let tamamaTalkFrame = 0; // 儲存 Tamama 對話動畫目前播放的動畫格
+let tamamaTalkLastFrameAt = 0; // 儲存 Tamama 對話動畫上次切格的時間
+let talkActive = false; // 儲存 Tamama 目前是否正在對話
+const tamamaTalkFrameDuration = 130; // 設定 Tamama 對話動畫每格持續時間
 
 let gameState = "normal"; // 使用 normal、question、correct、incorrect 管理遊戲狀態
 let collisionTriggered = false; // 儲存本次推動碰撞是否已經觸發過問答
@@ -89,6 +95,7 @@ function preload() { // 在建立畫布前先載入所有圖片資源
   tamamaStopSprite = loadImage("tamama/stop/stop.png"); // 載入 Tamama 待機動畫精靈圖
   tamamaFallSprite = loadImage("tamama/fall/fall.png"); // 載入 Tamama 摔倒動畫精靈圖
   tamamaPushSprite = loadImage("tamama/push/push.png"); // 載入 Tamama 推動動畫精靈圖
+  tamamaTalkSprite = loadImage("tamama/talk/talk.png"); // 載入 Tamama 對話動畫精靈圖
 } // 結束 preload 函式
 
 function setup() { // 執行一次初始化設定
@@ -122,6 +129,8 @@ function draw() { // 每一格畫面都會重複執行的主要函式
 
   updateNormalMovementAndAnimation(); // 更新正常狀態的移動與動畫
   updateTamamaStopAnimation(); // 更新 Tamama 的待機循環動畫
+  updateTalkState(); // 判斷 Keroro 是否與 Tamama 接觸並更新對話狀態
+  updateTamamaTalkAnimation(); // 更新 Tamama 對話動畫
   drawNormalWorld(); // 繪製正常狀態的 Keroro 與 Tamama
 
   if (actionType === "push" && isPushCollisionStage(actionFrame) && !collisionTriggered && isPushStageTouchingTamama()) { // 如果推動第 4、5、6 張圖片的階段碰到 Tamama 且尚未觸發碰撞
@@ -235,17 +244,102 @@ function drawKeroroNormalCharacter() { // 繪製 Keroro 待機或跑步動畫
   drawCharacterAtPosition(sprite, frameData, displayWidth, displayHeight, facingLeft, characterX, characterY); // 在 Keroro 目前位置繪製一般動畫
 } // 結束 drawKeroroNormalCharacter 函式
 
-function drawTamamaStopCharacter() { // 繪製 Tamama 待機動畫
-  if (!isImageReady(tamamaStopSprite)) { // 如果 Tamama 待機精靈圖尚未載入完成
-    return; // 暫停繪製避免圖片索引錯誤
+function drawTamamaStopCharacter() { // 繪製 Tamama 待機或對話動畫
+  if (talkActive) { // 如果 Tamama 正在對話
+    drawTamamaTalkCharacter(); // 繪製 Tamama 對話動畫
+    drawTamamaDialogue(); // 繪製 Tamama 上方的對話框
+    return; // 結束 Tamama 待機繪製
+  } // 結束對話狀態判斷
+
+  if (!isImageReady(tamamaStopSprite)) { // 如果 Tamama 待機圖片尚未載入完成
+    return; // 暫停繪製避免圖片錯誤
   } // 結束 Tamama 待機圖片判斷
 
   const frameData = getFrameData(tamamaStopSprite, tamamaStopFrameCount, tamamaStopFrame); // 取得 Tamama 待機動畫格資料
-  const displayWidth = frameData.sourceWidth * characterScale * scaleFactor; // 計算 Tamama 待機顯示寬度
-  const displayHeight = frameData.sourceHeight * characterScale * scaleFactor; // 計算 Tamama 待機顯示高度
+  const displayWidth = frameData.sourceWidth * characterScale * scaleFactor; // 計算 Tamama 顯示寬度
+  const displayHeight = frameData.sourceHeight * characterScale * scaleFactor; // 計算 Tamama 顯示高度
 
-  drawCharacterAtPosition(tamamaStopSprite, frameData, displayWidth, displayHeight, true, tamamaX, tamamaY); // 在 Tamama 目前位置繪製待機動畫並水平翻轉
+  drawCharacterAtPosition(tamamaStopSprite, frameData, displayWidth, displayHeight, true, tamamaX, tamamaY); // 繪製 Tamama 待機動畫並水平翻轉
 } // 結束 drawTamamaStopCharacter 函式
+
+function updateTalkState() { // 判斷 Keroro 是否正在與 Tamama 接觸
+  if (gameState !== "normal") { // 如果目前不是正常遊戲狀態
+    talkActive = false; // 關閉對話狀態
+    return; // 結束對話判斷
+  } // 結束遊戲狀態判斷
+
+  if (actionType === "push") { // 如果 Keroro 正在執行推動動作
+    talkActive = false; // 推動動作優先於對話
+    return; // 結束對話判斷
+  } // 結束推動判斷
+
+  const keroroBounds = getKeroroNormalBounds(); // 取得 Keroro 一般狀態的碰撞範圍
+  const tamamaBounds = getTamamaStopBounds(); // 取得 Tamama 待機狀態的碰撞範圍
+
+  if (keroroBounds && tamamaBounds && rectanglesOverlap(keroroBounds, tamamaBounds)) { // 如果兩個角色正在碰觸
+    talkActive = true; // 開啟 Tamama 對話狀態
+    tamamaTalkLastFrameAt = millis(); // 記錄對話動畫開始時間
+  } else { // 如果兩個角色沒有碰觸
+    talkActive = false; // 關閉 Tamama 對話狀態
+    tamamaTalkFrame = 0; // 將對話動畫回到第一格
+  } // 結束碰觸判斷
+} // 結束 updateTalkState 函式
+
+function updateTamamaTalkAnimation() { // 更新 Tamama 對話動畫
+  if (!talkActive || !isImageReady(tamamaTalkSprite)) { // 如果沒有對話或圖片尚未載入
+    return; // 暫停對話動畫
+  } // 結束動畫更新判斷
+
+  const now = millis(); // 取得目前時間
+
+  if (now - tamamaTalkLastFrameAt >= tamamaTalkFrameDuration) { // 如果達到動畫切換時間
+    tamamaTalkFrame = (tamamaTalkFrame + 1) % tamamaTalkFrameCount; // 循環播放對話動畫
+    tamamaTalkLastFrameAt = now; // 更新上次切換時間
+  } // 結束動畫切換判斷
+} // 結束 updateTamamaTalkAnimation 函式
+
+function drawTamamaTalkCharacter() { // 繪製 Tamama 對話動畫
+  if (!isImageReady(tamamaTalkSprite)) { // 如果對話圖片尚未載入完成
+    return; // 暫停繪製避免錯誤
+  } // 結束圖片載入判斷
+
+  const frameData = getFrameData(tamamaTalkSprite, tamamaTalkFrameCount, tamamaTalkFrame); // 取得對話動畫格資料
+  const displayWidth = frameData.sourceWidth * characterScale * scaleFactor; // 計算對話角色顯示寬度
+  const displayHeight = frameData.sourceHeight * characterScale * scaleFactor; // 計算對話角色顯示高度
+
+  drawCharacterAtPosition(tamamaTalkSprite, frameData, displayWidth, displayHeight, true, tamamaX, tamamaY); // 繪製並水平翻轉 Tamama 對話動畫
+} // 結束 drawTamamaTalkCharacter 函式
+
+function drawTamamaDialogue() { // 繪製 Tamama 上方的對話框
+  const dialogueWidth = max(180, 260 * scaleFactor); // 設定對話框寬度
+  const dialogueHeight = max(45, 70 * scaleFactor); // 設定對話框高度
+  const dialogueX = tamamaX - dialogueWidth / 2; // 計算對話框水平位置
+  const dialogueY = tamamaY - 120 * scaleFactor; // 計算對話框垂直位置
+
+  push(); // 儲存目前畫布繪圖設定
+  fill(255, 255, 255, 230); // 設定對話框白色半透明填色
+  stroke(50, 50, 50, 220); // 設定對話框邊線
+  strokeWeight(max(1, 2 * scaleFactor)); // 設定對話框邊線寬度
+  rect(dialogueX, dialogueY, dialogueWidth, dialogueHeight, 12 * scaleFactor); // 繪製圓角對話框
+  noStroke(); // 移除文字外框
+  fill(30, 30, 30, 255); // 設定文字顏色
+  textAlign(CENTER, CENTER); // 設定文字置中
+  textSize(max(12, 18 * scaleFactor)); // 設定文字大小
+  text("答對題目才能打倒我。", tamamaX, dialogueY + dialogueHeight / 2); // 顯示對話內容
+  pop(); // 還原畫布繪圖設定
+} // 結束 drawTamamaDialogue 函式
+
+function getKeroroNormalBounds() { // 取得 Keroro 一般狀態的碰撞範圍
+  if (!isImageReady(stopSprite)) { // 如果 Keroro 待機圖片尚未載入完成
+    return null; // 回傳無效碰撞範圍
+  } // 結束圖片載入判斷
+
+  const frameData = getFrameData(stopSprite, stopFrameCount, 0); // 取得 Keroro 待機第一格資料
+  const displayWidth = frameData.sourceWidth * characterScale * scaleFactor; // 計算 Keroro 碰撞寬度
+  const displayHeight = frameData.sourceHeight * characterScale * scaleFactor; // 計算 Keroro 碰撞高度
+
+  return makeBounds(characterX, characterY, displayWidth, displayHeight); // 回傳 Keroro 碰撞範圍
+} // 結束 getKeroroNormalBounds 函式
 
 function keyPressed() { // 當鍵盤按鍵被按下時執行
   if (gameState !== "normal" || actionType !== "none") { // 如果正在答題、結果流程或其他特殊動作
